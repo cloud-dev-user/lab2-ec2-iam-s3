@@ -1,7 +1,10 @@
 from aws_cdk import (
-    # Duration,
     Stack,
-    # aws_sqs as sqs,
+    aws_ec2 as ec2,
+    aws_iam as iam,
+    aws_s3 as s3,
+    aws_ssm as ssm,
+    RemovalPolicy
 )
 from constructs import Construct
 
@@ -10,10 +13,54 @@ class Lab2Ec2IamS3Stack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # The code that defines your stack goes here
+        # ---- Fetch parameters from SSM ----
+        instance_type = ssm.StringParameter.from_string_parameter_name(
+            self, "InstanceTypeParam",
+            string_parameter_name="/lab2/instanceType"
+        ).string_value
 
-        # example resource
-        # queue = sqs.Queue(
-        #     self, "Lab2Ec2IamS3Queue",
-        #     visibility_timeout=Duration.seconds(300),
-        # )
+        key_name = ssm.StringParameter.from_string_parameter_name(
+            self, "KeyNameParam",
+            string_parameter_name="/lab2/keyName"
+        ).string_value
+
+        bucket_name = ssm.StringParameter.from_string_parameter_name(
+            self, "BucketNameParam",
+            string_parameter_name="/lab2/bucketName"
+        ).string_value
+
+        # ---- IAM Role for EC2 ----
+        role = iam.Role(self, "EC2Role",
+            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
+            ]
+        )
+
+        # ---- Security Group ----
+        vpc = ec2.Vpc(self, "VPC", max_azs=2)
+        sg = ec2.SecurityGroup(self, "EC2SG",
+            vpc=vpc,
+            description="Allow SSH",
+            allow_all_outbound=True
+        )
+        sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(22), "Allow SSH")
+
+        # ---- EC2 Instance ----
+        ec2_instance = ec2.Instance(self, "MyInstance",
+            vpc=vpc,
+            instance_type=ec2.InstanceType(instance_type),
+            machine_image=ec2.MachineImage.latest_amazon_linux2(),
+            key_name=key_name,
+            role=role,
+            security_group=sg
+        )
+
+        # ---- S3 Bucket ----
+        bucket = s3.Bucket(self, "MyBucket",
+            bucket_name=bucket_name,
+            versioned=True,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True
+        )
+
