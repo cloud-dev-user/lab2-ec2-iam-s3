@@ -29,6 +29,11 @@ class Lab2Ec2IamS3Stack(Stack):
             string_parameter_name="/lab2/bucketName"
         ).string_value
 
+        vpc_id = ssm.StringParameter.from_string_parameter_name(
+            self, "VpcIdParam",
+            string_parameter_name="/lab2/vpcId"
+        ).string_value
+
         # ---- IAM Role for EC2 ----
         role = iam.Role(self, "EC2Role",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
@@ -36,9 +41,12 @@ class Lab2Ec2IamS3Stack(Stack):
                 iam.ManagedPolicy.from_aws_managed_policy_name("AmazonS3FullAccess")
             ]
         )
-
+        
+        # ---- Use existing VPC from SSM ----
+        vpc = ec2.Vpc.from_lookup(self, "ExistingVPC",
+            vpc_id=vpc_id
+        )
         # ---- Security Group ----
-        vpc = ec2.Vpc(self, "VPC", max_azs=2)
         sg = ec2.SecurityGroup(self, "EC2SG",
             vpc=vpc,
             description="Allow SSH",
